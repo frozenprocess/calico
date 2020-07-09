@@ -1,6 +1,7 @@
 # redirect old docs to latest at root.
 # note that you can still access these old docs at https://docs.projectcalico.org/archive/*
 /latest/* /:splat 301
+/v3.15/* /:splat 301
 /v3.14/* /:splat 301
 /v3.13/* /:splat 301
 /v3.12/* /:splat 301
@@ -255,6 +256,7 @@
 /security/host-endpoints/tutorial /security/tutorials/protect-hosts 301
 /security/simple-policy /security/tutorials/kubernetes-policy-basic 301
 /security/stars-policy/ /security/tutorials/kubernetes-policy-demo/kubernetes-demo 301
+/security/try-node-to-node-encryption /security/encrypt-cluster-pod-traffic 301
 /usage/ /security/ 301
 /usage/assigning-ip-addresses-topology /networking/assign-ip-addresses-topology 301
 /usage/bird-rr-config /reference/architecture/overview 301
@@ -298,4 +300,3 @@
 /usage/troubleshooting/faq /reference/faq 301
 /usage/troubleshooting/faq-2 /reference/faq 301
 /usage/troubleshooting/logging /maintenance/component-logs 301
-

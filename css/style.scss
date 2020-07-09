@@ -35,8 +35,14 @@ $sticky-top: $header-height + $navbar-margin-bottom;
   }
 }
 
+h1 {
+  font-size: 38px;
+}
+
 h4 {
+  margin: 22px 0px 8px 0px;
   font-weight: 700;
+  font-size: 20px;
 }
 
 // Default blockquotes are too big in Bootstrap.
@@ -62,8 +68,8 @@ body {
   }
 }
 
-h2,h3,h4,h5,h6 {
-  margin-top: 30px;
+h2,h3 {
+  margin-top: 28px;
 }
 
 pre code {
@@ -71,7 +77,7 @@ pre code {
 }
 
 div.alert-warning {
-  background-color: #FFFF7E;
+  background-color: #FFE3AB;
   color: #C7254E;
 }
 
@@ -498,9 +504,13 @@ $max-toc-height: calc(100vh - #{$sticky-top + $navbar-margin-bottom});
 .edit-page-link {
   color: #999;
   float: right;
-  padding: 8px 10px;
+  padding: 3px 10px;
 }
 
 .breadcrumb-item {
   font-size: 14px;
+}
+
+.general-tab-header {
+  margin-bottom: 1em;
 }
