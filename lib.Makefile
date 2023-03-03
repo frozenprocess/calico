@@ -40,12 +40,15 @@ BUILDARCH ?= $(shell uname -m)
 BUILDOS ?= $(shell uname -s | tr A-Z a-z)
 endif
 
+EXPECTED_ARCH ?=
+
 # canonicalized names for host architecture
 ifeq ($(BUILDARCH),aarch64)
 	BUILDARCH=arm64
 endif
 ifeq ($(BUILDARCH),x86_64)
 	BUILDARCH=amd64
+	override EXPECTED_ARCH=x86-64
 endif
 ifeq ($(BUILDARCH),armv7l)
         BUILDARCH=armv7
@@ -57,15 +60,27 @@ ARCH ?= $(BUILDARCH)
 # canonicalized names for target architecture
 ifeq ($(ARCH),aarch64)
 	override ARCH=arm64
+	override EXPECTED_ARCH=ARM aarch64
 endif
 ifeq ($(ARCH),x86_64)
 	override ARCH=amd64
+	override EXPECTED_ARCH=x86-64
 endif
 ifeq ($(ARCH),armv7l)
         override ARCH=armv7
+	override EXPECTED_ARCH=ARM
 endif
 ifeq ($(ARCH),armhfv7)
         override ARCH=armv7
+	EXPECTED_ARCH=ARM
+endif
+
+ifeq ($(ARCH),ppc64le)
+	override EXPECTED_ARCH= 64-bit PowerPC or cisco 7500
+endif
+
+ifeq ($(ARCH),s390x)
+	override EXPECTED_ARCH=IBM S/390
 endif
 
 # If ARCH is arm based, find the requested version/variant
@@ -686,6 +701,33 @@ check-module-path-projectcalico-api:
 	     echo "Error: This repo should NOT import tigera/api module."; \
 	     false; \
 	fi
+
+.PHONY: image-bin-arch-check
+image-bin-arch-check:
+	@echo "Checking the image architecutre"
+	$(eval IMAGE_ARCH := $(shell docker inspect $(IMAGE_NAME):latest-$(ARCH) | jq ".[].Architecture" | sed 's#\"##g'))	
+	if [ "$(IMAGE_ARCH)" != "$(ARCH)" ]; then \
+	     echo "Error: Image architecture is not correct."; \
+	     echo "use this command to investigate : docker inspect $(IMAGE_NAME):latest-$(ARCH)"; \
+	     false; \
+	fi
+
+# IBM S/390
+# x86-64
+# ARM aarch64
+# ARM
+# PowerPC 
+
+	@echo "Checking the binary architecutre"
+	$(eval BIN_ARCH := $(shell file $(BIN_FILE)-$(ARCH) | cut -d "," -f2 ))
+	echo $(BIN_ARCH)
+	if [ "$(BIN_ARCH)" != "$(EXPECTED_ARCH)" ]; then \
+	     echo "Error: Binary file doesn't have the correct architecture."; \
+	     echo "use file $(BIN_FILE)-$(ARCH) to investigate"; \
+	     false; \
+	fi
+
+	exit 1
 
 ###############################################################################
 # go mod helpers
@@ -1365,4 +1407,3 @@ help:
 	@echo "BUILDARCH (host):	$(BUILDARCH)"
 	@echo "CALICO_BUILD:		$(CALICO_BUILD)"
 	@echo "-----------------------------------------------------------"
-

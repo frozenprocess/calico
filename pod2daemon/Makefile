@@ -135,6 +135,8 @@ sub-image-%:
 $(FLEXVOL_IMAGE): $(FLEXVOL_CONTAINER_CREATED)
 $(FLEXVOL_CONTAINER_CREATED): Dockerfile.$(ARCH) bin/flexvol-$(ARCH)
 	$(DOCKER_BUILD) -t $(FLEXVOL_IMAGE):latest-$(ARCH) -f Dockerfile.$(ARCH) . --load
+	$(MAKE) image-bin-arch-check BIN_FILE=bin/flexvol IMAGE_NAME=$(FLEXVOL_IMAGE)
+
 	$(MAKE) retag-build-images-with-registries VALIDARCHES=$(ARCH) IMAGETAG=latest BUILD_IMAGES=$(FLEXVOL_IMAGE)
 	touch $@
 
