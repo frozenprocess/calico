@@ -3210,10 +3210,35 @@ func (m *bpfEndpointManager) ensureBPFDevices() error {
 		la := netlink.NewLinkAttrs()
 		la.Name = dataplanedefs.BPFInDev
 		la.MTU = m.bpfIfaceMTU
-		nat := &netlink.Veth{
+
+		// netkit
+		nat := &netlink.Netkit{
 			LinkAttrs: la,
-			PeerName:  dataplanedefs.BPFOutDev,
+			// Mode:       netlink.NETKIT_MODE_L2,
+			// Policy:     netlink.NETKIT_POLICY_FORWARD,
+			// PeerPolicy: netlink.NETKIT_POLICY_FORWARD,
 		}
+		if os.Getenv("NETKIT_MODE") == "L3" {
+			nat.Mode = netlink.NETKIT_MODE_L3
+		} else {
+			nat.Mode = netlink.NETKIT_MODE_L2
+		}
+		if os.Getenv("NETKIT_POLICY") == "block" {
+			nat.Policy = netlink.NETKIT_POLICY_BLACKHOLE
+			nat.PeerPolicy = netlink.NETKIT_POLICY_BLACKHOLE
+		} else {
+			nat.Policy = netlink.NETKIT_POLICY_FORWARD
+			nat.PeerPolicy = netlink.NETKIT_POLICY_FORWARD
+		}
+		peer := netlink.NewLinkAttrs()
+		peer.Name = dataplanedefs.BPFOutDev
+		peer.MTU = m.bpfIfaceMTU
+		nat.SetPeerAttrs(&peer)
+		// nat := &netlink.Veth{
+		// 	LinkAttrs: la,
+		// 	PeerName:  dataplanedefs.BPFOutDev,
+		// }
+
 		if err := netlink.LinkAdd(nat); err != nil {
 			return fmt.Errorf("failed to add %s: %w", dataplanedefs.BPFInDev, err)
 		}

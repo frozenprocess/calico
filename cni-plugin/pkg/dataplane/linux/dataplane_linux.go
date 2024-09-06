@@ -84,37 +84,67 @@ func (d *linuxDataplane) DoNetworking(
 
 	err = ns.WithNetNSPath(args.Netns, func(hostNS ns.NetNS) error {
 		la := netlink.NewLinkAttrs()
-		la.Name = contVethName
+		la.Name = hostVethName
 		la.MTU = d.mtu
 		la.NumTxQueues = d.queues
 		la.NumRxQueues = d.queues
-		veth := &netlink.Veth{
-			LinkAttrs:     la,
-			PeerName:      hostVethName,
-			PeerNamespace: netlink.NsFd(int(hostNS.Fd())),
+		la.Namespace = netlink.NsFd(int(hostNS.Fd()))
+		veth := &netlink.Netkit{
+			LinkAttrs: la,
+			// Mode:       netlink.NETKIT_MODE_L3,
+			// Policy:     netlink.NETKIT_POLICY_FORWARD,
+			// PeerPolicy: netlink.NETKIT_POLICY_FORWARD,
+		}
+		d.logger.Errorf("NETKIT_MODE: %s", os.Getenv("NETKIT_MODE"))
+		if os.Getenv("NETKIT_MODE") == "L3" {
+			veth.Mode = netlink.NETKIT_MODE_L3
+		} else {
+			veth.Mode = netlink.NETKIT_MODE_L2
+		}
+		d.logger.Errorf("NETKIT_POLICY: %s", os.Getenv("NETKIT_POLICY"))
+		if os.Getenv("NETKIT_POLICY") == "block" {
+			veth.Policy = netlink.NETKIT_POLICY_BLACKHOLE
+			veth.PeerPolicy = netlink.NETKIT_POLICY_BLACKHOLE
+		} else {
+			veth.Policy = netlink.NETKIT_POLICY_FORWARD
+			veth.PeerPolicy = netlink.NETKIT_POLICY_FORWARD
 		}
 
+		peer := netlink.NewLinkAttrs()
+		peer.Name = contVethName
+		peer.MTU = d.mtu
+		peer.NumTxQueues = d.queues
+		peer.NumRxQueues = d.queues
+		// peer.Namespace = netlink.NsFd(int(hostNS.Fd()))
+		veth.SetPeerAttrs(&peer)
+
+		// veth := &netlink.Veth{
+		// 	LinkAttrs:     la,
+		// 	PeerName:      hostVethName,
+		// 	PeerNamespace: netlink.NsFd(int(hostNS.Fd())),
+		// }
+		d.logger.Errorf("Interface names are host: %s  cont:%s", hostVethName, contVethName)
 		if err := netlink.LinkAdd(veth); err != nil {
-			d.logger.Errorf("Error adding veth %+v: %s", veth, err)
+			d.logger.Errorf("Error adding interface %+v: %s", veth, err)
 			return err
 		}
 
 		hostVeth, err := hostNlHandle.LinkByName(hostVethName)
 		if err != nil {
-			err = fmt.Errorf("failed to lookup %q: %v", hostVethName, err)
+			err = fmt.Errorf("failed to lookup hostvethname %q: %v", hostVethName, err)
 			return err
 		}
-
-		if mac, err := net.ParseMAC("EE:EE:EE:EE:EE:EE"); err != nil {
-			d.logger.Infof("failed to parse MAC Address: %v. Using kernel generated MAC.", err)
-		} else {
-			// Set the MAC address on the host side interface so the kernel does not
-			// have to generate a persistent address which fails some times.
-			if err = hostNlHandle.LinkSetHardwareAddr(hostVeth, mac); err != nil {
-				d.logger.Warnf("failed to Set MAC of %q: %v. Using kernel generated MAC.", hostVethName, err)
+		if os.Getenv("NETKIT_MODE") != "L3" {
+			if mac, err := net.ParseMAC("EE:EE:EE:EE:EE:EE"); err != nil {
+				d.logger.Infof("failed to parse MAC Address: %v. Using kernel generated MAC.", err)
+			} else {
+				// Set the MAC address on the host side interface so the kernel does not
+				// have to generate a persistent address which fails some times.
+				if err = hostNlHandle.LinkSetHardwareAddr(hostVeth, mac); err != nil {
+					d.logger.Warnf("failed to Set MAC of %q: %v. Using kernel generated MAC.", hostVethName, err)
+				}
 			}
 		}
-
 		// Figure out whether we have IPv4 and/or IPv6 addresses.
 		for _, addr := range result.IPs {
 			if addr.Address.IP.To4() != nil {
@@ -158,7 +188,7 @@ func (d *linuxDataplane) DoNetworking(
 
 		contVeth, err := netlink.LinkByName(contVethName)
 		if err != nil {
-			err = fmt.Errorf("failed to lookup %q: %v", contVethName, err)
+			err = fmt.Errorf("failed to lookup contvethname %q: %v", contVethName, err)
 			return err
 		}
 
@@ -167,26 +197,28 @@ func (d *linuxDataplane) DoNetworking(
 			return fmt.Errorf("failed to set %q up: %w", contVethName, err)
 		}
 
-		// Check if there is an annotation requesting a specific fixed MAC address for the container Veth, otherwise
-		// use kernel-assigned MAC.
-		if requestedContVethMac, found := annotations["cni.projectcalico.org/hwAddr"]; found {
-			tmpContVethMAC, err := net.ParseMAC(requestedContVethMac)
-			if err != nil {
-				return fmt.Errorf("failed to parse MAC address %v provided via cni.projectcalico.org/hwAddr: %v",
-					requestedContVethMac, err)
-			}
+		if os.Getenv("NETKIT_MODE") != "L3" {
+			// Check if there is an annotation requesting a specific fixed MAC address for the container Veth, otherwise
+			// use kernel-assigned MAC.
+			if requestedContVethMac, found := annotations["cni.projectcalico.org/hwAddr"]; found {
+				tmpContVethMAC, err := net.ParseMAC(requestedContVethMac)
+				if err != nil {
+					return fmt.Errorf("failed to parse MAC address %v provided via cni.projectcalico.org/hwAddr: %v",
+						requestedContVethMac, err)
+				}
 
-			err = netlink.LinkSetHardwareAddr(contVeth, tmpContVethMAC)
-			if err != nil {
-				return fmt.Errorf("failed to set container veth MAC to %v as requested via cni.projectcalico.org/hwAddr: %v",
-					requestedContVethMac, err)
-			}
+				err = netlink.LinkSetHardwareAddr(contVeth, tmpContVethMAC)
+				if err != nil {
+					return fmt.Errorf("failed to set container veth MAC to %v as requested via cni.projectcalico.org/hwAddr: %v",
+						requestedContVethMac, err)
+				}
 
-			contVethMAC = tmpContVethMAC.String()
-			d.logger.Infof("successfully configured container veth MAC to %v as requested via cni.projectcalico.org/hwAddr",
-				contVethMAC)
-		} else {
-			contVethMAC = contVeth.Attrs().HardwareAddr.String()
+				contVethMAC = tmpContVethMAC.String()
+				d.logger.Infof("successfully configured container veth MAC to %v as requested via cni.projectcalico.org/hwAddr",
+					contVethMAC)
+			} else {
+				contVethMAC = contVeth.Attrs().HardwareAddr.String()
+			}
 		}
 
 		d.logger.WithField("MAC", contVethMAC).Debug("Found MAC for container veth")
@@ -304,7 +336,7 @@ func (d *linuxDataplane) DoNetworking(
 
 	hostVeth, err := hostNlHandle.LinkByName(hostVethName)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to lookup %q: %v", hostVethName, err)
+		return "", "", fmt.Errorf("failed to lookup  hostvethname2 %q: %v", hostVethName, err)
 	}
 
 	// Add the routes to host veth in the host namespace.
